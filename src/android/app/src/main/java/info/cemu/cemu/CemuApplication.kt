@@ -1,8 +1,11 @@
 package info.cemu.cemu
 
+import android.app.ActivityManager
 import android.app.Application
+import android.os.Process
 import info.cemu.cemu.common.android.context.internalFolder
 import info.cemu.cemu.common.settings.AppSettingsStore
+import info.cemu.cemu.common.settings.StorageType
 import info.cemu.cemu.common.ui.localization.setLanguage
 import info.cemu.cemu.common.ui.localization.setTranslations
 import info.cemu.cemu.nativeinterface.NativeActiveSettings.initializeActiveSettings
@@ -35,9 +38,20 @@ class CemuApplication : Application() {
 
         initializeTranslations()
 
-        initializeCemu()
+        val storageSettings = runBlocking {
+            AppSettingsStore.dataStore.data.map { it.storageSettings }.first()
+        }
 
-        saveDataFiles()
+        if (isEmulationProcess() || storageSettings.storageType != StorageType.NOT_SET) {
+            val folder = when (storageSettings.storageType) {
+                StorageType.CUSTOM -> storageSettings.customFolderPath?.let { File(it) }
+                    ?: internalFolder()
+
+                else -> internalFolder()
+            }
+            initializeCemu(folder)
+            saveDataFiles(folder)
+        }
     }
 
     private fun initializeTranslations() {
@@ -50,8 +64,8 @@ class CemuApplication : Application() {
         setLanguage(language, this)
     }
 
-    private fun saveDataFiles() {
-        val dataFolder = File(internalCemuDataFolder)
+    private fun saveDataFiles(folder: File) {
+        val dataFolder = folder.resolve("data")
 
         if (!dataFolder.exists() && !dataFolder.mkdirs()) {
             return
@@ -128,31 +142,43 @@ class CemuApplication : Application() {
         }
     }
 
-    private fun initializeCemu() {
+    private fun initializeCemu(folder: File) {
         val displayMetrics = resources.displayMetrics
         setDPI(displayMetrics.density)
         initializeActiveSettings(
-            userDataPath = internalCemuUserFolder,
-            dataPath = internalCemuDataFolder,
-            cachePath = internalCemuUserFolder,
+            userDataPath = folder.absolutePath,
+            dataPath = folder.resolve("data").absolutePath,
+            cachePath = folder.absolutePath,
         )
         setNativeLibDir(applicationInfo.nativeLibraryDir)
         setInternalDir(dataDir.absolutePath)
         initializeEmulation()
         initializeSwkbd()
         refreshGraphicPacks()
+        cemuInitialized = true
     }
 
-    private val internalCemuDataFolder: String
-        get() = internalFolder().resolve("data").toString()
+    fun initializeCemuWithFolder(folder: File) {
+        if (cemuInitialized) return
+        initializeCemu(folder)
+        saveDataFiles(folder)
+    }
 
-    private val internalCemuUserFolder: String
-        get() = internalFolder().toString()
+    private fun isEmulationProcess(): Boolean {
+        val pid = Process.myPid()
+        val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+        return activityManager.runningAppProcesses?.any {
+            it.pid == pid && it.processName.endsWith(":EmulationProcess")
+        } ?: false
+    }
 
     companion object {
         init {
             System.loadLibrary("CemuAndroid")
         }
+
+        var cemuInitialized: Boolean = false
+            private set
 
         private var DefaultUncaughtExceptionHandler: Thread.UncaughtExceptionHandler? = null
     }

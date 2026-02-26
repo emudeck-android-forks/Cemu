@@ -14,6 +14,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
@@ -23,6 +25,8 @@ import info.cemu.cemu.about.aboutCemuNavigation
 import info.cemu.cemu.common.input.GamepadInputHandler
 import info.cemu.cemu.common.input.GamepadInputManager
 import info.cemu.cemu.common.input.NullGamepadInputHandler
+import info.cemu.cemu.common.settings.AppSettingsStore
+import info.cemu.cemu.common.settings.StorageType
 import info.cemu.cemu.common.ui.components.ActivityContent
 import info.cemu.cemu.common.ui.localization.TranslatableContent
 import info.cemu.cemu.emulation.EmulationActivity
@@ -32,10 +36,13 @@ import info.cemu.cemu.graphicpacks.GraphicPacksRoute
 import info.cemu.cemu.graphicpacks.graphicPacksNavigation
 import info.cemu.cemu.nativeinterface.NativeGameTitles.Game
 import info.cemu.cemu.nativeinterface.NativeSettings
+import info.cemu.cemu.onboarding.StorageOnboardingRoute
+import info.cemu.cemu.onboarding.onboardingNavigation
 import info.cemu.cemu.settings.SettingsRoute
 import info.cemu.cemu.settings.settingsNavigation
 import info.cemu.cemu.titlemanager.TitleManagerRoute
 import info.cemu.cemu.titlemanager.titleManagerNavigation
+import kotlinx.coroutines.flow.map
 
 class MainActivity : GamepadInputManager, AppCompatActivity() {
     private var handler: GamepadInputHandler = NullGamepadInputHandler
@@ -77,12 +84,12 @@ class MainActivity : GamepadInputManager, AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        NativeSettings.saveSettings()
+        if (CemuApplication.cemuInitialized) NativeSettings.saveSettings()
     }
 
     override fun onPause() {
         super.onPause()
-        NativeSettings.saveSettings()
+        if (CemuApplication.cemuInitialized) NativeSettings.saveSettings()
     }
 }
 
@@ -91,11 +98,30 @@ private fun MainNav() {
     val navController = rememberNavController()
     val context = LocalContext.current
 
+    val storageSettings by AppSettingsStore.dataStore.data
+        .map { it.storageSettings }
+        .collectAsState(initial = null)
+
+    val settings = storageSettings ?: return
+
+    val startDestination: Any = if (settings.storageType == StorageType.NOT_SET) {
+        StorageOnboardingRoute
+    } else {
+        GameListRoute
+    }
+
     NavHost(
         navController = navController,
-        startDestination = GameListRoute,
+        startDestination = startDestination,
         enterTransition = { EnterTransition.None },
         exitTransition = { ExitTransition.None }) {
+        onboardingNavigation(
+            onComplete = {
+                navController.navigate(GameListRoute) {
+                    popUpTo(StorageOnboardingRoute) { inclusive = true }
+                }
+            },
+        )
         gamesNavigation(
             navController = navController,
             startGame = { startGame(context, it) },

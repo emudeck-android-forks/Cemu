@@ -14,6 +14,11 @@ import android.webkit.MimeTypeMap
 import info.cemu.cemu.BuildConfig
 import info.cemu.cemu.R
 import info.cemu.cemu.common.android.context.internalFolder
+import info.cemu.cemu.common.settings.AppSettingsStore
+import info.cemu.cemu.common.settings.StorageType
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileNotFoundException
@@ -23,7 +28,13 @@ import java.util.Objects
 
 class DocumentsProvider : DocumentsProvider() {
     private val baseDirectory: File by lazy {
-        requireContext().internalFolder()
+        val storageSettings = runBlocking {
+            AppSettingsStore.dataStore.data.map { it.storageSettings }.first()
+        }
+        when (storageSettings.storageType) {
+            StorageType.CUSTOM -> File(storageSettings.customFolderPath!!)
+            else -> requireContext().internalFolder()
+        }
     }
 
     private val applicationName: String by lazy {

@@ -40,10 +40,20 @@ data class InputOverlaySettings(
 )
 
 @Serializable
+enum class StorageType { NOT_SET, DEFAULT, CUSTOM }
+
+@Serializable
+data class StorageSettings(
+    val storageType: StorageType = StorageType.NOT_SET,
+    val customFolderPath: String? = null,
+)
+
+@Serializable
 data class AppSettings(
     val guiSettings: GuiSettings = GuiSettings(),
     val emulationSettings: EmulationSettings = EmulationSettings(),
     val inputOverlaySettings: InputOverlaySettings = InputOverlaySettings(),
+    val storageSettings: StorageSettings = StorageSettings(),
 )
 
 object AppSettingsSerializer : Serializer<AppSettings> {
